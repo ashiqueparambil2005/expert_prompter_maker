@@ -20,8 +20,8 @@ st.markdown("""
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
     
     /* Ensure text is visible - Changed from black to dark blue */
-    body, .stApp, div, p, span, h1, h2, h3, label, input, textarea {
-        color: #1e3a8a !important;
+    body, .stApp, div, p, span, h1, h2, h3, h4, h5, h6, label, input, textarea, select, option {
+        color: #1e40af !important;
     }
     
     /* Main background */
@@ -60,12 +60,19 @@ st.markdown("""
     /* Input fields - Changed from black to dark blue */
     .stTextInput > div > div > input,
     .stTextArea > div > div > textarea,
+    .stSelectbox > div > div > select,
     .stSelectbox > div > div {
         background: white !important;
         border: 2px solid #e2e8f0 !important;
         border-radius: 12px !important;
-        color: #1e3a8a !important;
+        color: #1e40af !important;
         padding: 0.75rem !important;
+    }
+    
+    /* Selectbox options */
+    .stSelectbox option {
+        background: white !important;
+        color: #1e40af !important;
     }
     
     /* Tabs */
@@ -97,14 +104,25 @@ st.markdown("""
         background: white;
     }
     
+    [data-testid="stFileUploader"] label,
+    [data-testid="stFileUploader"] p,
+    [data-testid="stFileUploader"] span {
+        color: #1e40af !important;
+    }
+    
     /* Expander - Changed from black to dark blue */
     .streamlit-expanderHeader {
         background: white;
         border: 2px solid #e2e8f0;
         border-radius: 12px;
         padding: 1rem;
-        color: #1e3a8a !important;
+        color: #1e40af !important;
         font-weight: 600;
+    }
+    
+    .streamlit-expanderHeader p,
+    .streamlit-expanderHeader span {
+        color: #1e40af !important;
     }
     
     /* Success/Error/Warning/Info boxes */
@@ -115,19 +133,53 @@ st.markdown("""
     }
     
     /* Checkbox labels - Changed from black to dark blue */
-    .stCheckbox > label {
-        color: #1e3a8a !important;
+    .stCheckbox > label,
+    .stCheckbox > label > div,
+    .stCheckbox > label > div > p,
+    .stCheckbox span {
+        color: #1e40af !important;
         font-weight: 500;
+    }
+    
+    /* Radio button labels */
+    .stRadio > label,
+    .stRadio > label > div > p {
+        color: #1e40af !important;
+    }
+    
+    /* Slider labels */
+    .stSlider > label,
+    .stSlider > label > div > p {
+        color: #1e40af !important;
+    }
+    
+    /* Multiselect */
+    .stMultiSelect > label,
+    .stMultiSelect > label > div > p,
+    .stMultiSelect span {
+        color: #1e40af !important;
     }
     
     /* Make sure all text is visible - Changed from black to dark blue */
     * {
-        color: #1e3a8a;
+        color: #1e40af !important;
     }
     
     /* Markdown text - Changed from black to dark blue */
-    .markdown-text-container {
-        color: #1e3a8a !important;
+    .markdown-text-container,
+    .markdown-text-container * {
+        color: #1e40af !important;
+    }
+    
+    /* Code blocks - keep them distinct */
+    code, pre {
+        color: #059669 !important;
+        background: #f0fdf4 !important;
+    }
+    
+    /* Links */
+    a {
+        color: #667eea !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -143,6 +195,8 @@ if 'api_calls_count' not in st.session_state:
     st.session_state.api_calls_count = 0
 if 'img_description' not in st.session_state:
     st.session_state.img_description = ''
+if 'last_analyzed_image' not in st.session_state:
+    st.session_state.last_analyzed_image = None
 
 # --- Camera Angles Database ---
 CAMERA_ANGLES = {
@@ -505,6 +559,27 @@ with tab1:
         
         if uploaded_image:
             st.image(uploaded_image, use_container_width=True)
+            
+            # Auto-analyze on upload
+            if 'last_analyzed_image' not in st.session_state or st.session_state.last_analyzed_image != uploaded_image.name:
+                with st.spinner("🔍 Auto-analyzing image..."):
+                    analysis = analyze_image(uploaded_image, model)
+                    if "Error" not in analysis and "Demo Mode" not in analysis:
+                        st.session_state.img_description = analysis
+                        st.session_state.last_analyzed_image = uploaded_image.name
+                        st.success("✅ Image analyzed automatically!")
+                        with st.expander("📋 View Analysis", expanded=True):
+                            st.write(analysis)
+            
+            # Manual re-analyze option
+            if st.button("🔄 Re-analyze Image", key="reanalyze_multi"):
+                with st.spinner("🔍 Analyzing..."):
+                    analysis = analyze_image(uploaded_image, model)
+                    if "Error" not in analysis and "Demo Mode" not in analysis:
+                        st.session_state.img_description = analysis
+                        st.success("✅ Analysis updated!")
+                        with st.expander("📋 View Analysis", expanded=True):
+                            st.write(analysis)
         
         st.markdown("---")
         st.subheader("🎨 Visual Style")
