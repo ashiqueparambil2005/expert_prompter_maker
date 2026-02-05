@@ -19,9 +19,9 @@ st.markdown("""
     /* Import fonts */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
     
-    /* Ensure text is visible */
+    /* Ensure text is visible - Changed from black to dark blue */
     body, .stApp, div, p, span, h1, h2, h3, label, input, textarea {
-        color: #1a202c !important;
+        color: #1e3a8a !important;
     }
     
     /* Main background */
@@ -57,14 +57,14 @@ st.markdown("""
         box-shadow: 0 8px 16px rgba(102, 126, 234, 0.3);
     }
     
-    /* Input fields */
+    /* Input fields - Changed from black to dark blue */
     .stTextInput > div > div > input,
     .stTextArea > div > div > textarea,
     .stSelectbox > div > div {
         background: white !important;
         border: 2px solid #e2e8f0 !important;
         border-radius: 12px !important;
-        color: #1a202c !important;
+        color: #1e3a8a !important;
         padding: 0.75rem !important;
     }
     
@@ -97,13 +97,13 @@ st.markdown("""
         background: white;
     }
     
-    /* Expander */
+    /* Expander - Changed from black to dark blue */
     .streamlit-expanderHeader {
         background: white;
         border: 2px solid #e2e8f0;
         border-radius: 12px;
         padding: 1rem;
-        color: #1a202c !important;
+        color: #1e3a8a !important;
         font-weight: 600;
     }
     
@@ -114,20 +114,20 @@ st.markdown("""
         border-left: 4px solid;
     }
     
-    /* Checkbox labels */
+    /* Checkbox labels - Changed from black to dark blue */
     .stCheckbox > label {
-        color: #1a202c !important;
+        color: #1e3a8a !important;
         font-weight: 500;
     }
     
-    /* Make sure all text is visible */
+    /* Make sure all text is visible - Changed from black to dark blue */
     * {
-        color: #1a202c;
+        color: #1e3a8a;
     }
     
-    /* Markdown text */
+    /* Markdown text - Changed from black to dark blue */
     .markdown-text-container {
-        color: #1a202c !important;
+        color: #1e3a8a !important;
     }
     </style>
     """, unsafe_allow_html=True)
