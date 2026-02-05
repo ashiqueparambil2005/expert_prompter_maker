@@ -1,15 +1,13 @@
 import streamlit as st
 import google.generativeai as genai
-from google import genai as genai_client
 from PIL import Image
 import time
 from datetime import datetime
 import json
-import io
 
 # --- Page Configuration ---
 st.set_page_config(
-    page_title="Ultra Studio V12 Pro",
+    page_title="Ultra Studio V13 Pro",
     page_icon="✨",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -362,21 +360,11 @@ st.markdown("""
         background: #f8f9ff !important;
     }
     
-    /* === LOGOUT BUTTON === */
-    .logout-btn {
-        background: white !important;
-        border: 2px solid #fee2e2 !important;
-        color: #dc2626 !important;
-        border-radius: 12px !important;
-        padding: 0.6rem 1.5rem !important;
-        font-weight: 600 !important;
-        cursor: pointer;
-        transition: all 0.3s ease;
-    }
-    
-    .logout-btn:hover {
-        background: #fee2e2 !important;
-        transform: scale(1.05);
+    /* === IMAGE DISPLAY === */
+    [data-testid="stImage"] {
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
     }
     
     /* === HIDE DEFAULTS === */
@@ -394,7 +382,7 @@ st.markdown("""
         .hero-features { flex-direction: column; gap: 1rem; }
     }
     </style>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
 # --- Initialize Session State ---
 if 'logged_in' not in st.session_state:
@@ -410,10 +398,76 @@ if 'img_description' not in st.session_state:
 if 'last_image_gen_time' not in st.session_state:
     st.session_state.last_image_gen_time = 0
 
+# --- Camera Angles Database ---
+CAMERA_ANGLES = {
+    "Basic Angles": [
+        ("📷 Front View", "front view, direct facing camera, eye-level shot, straight-on angle"),
+        ("👤 Side View (Profile)", "side view, 90 degree profile shot, capturing silhouette, lateral perspective"),
+        ("🔄 Back View", "back view, rear angle, behind the subject, over-the-back shot"),
+        ("🎯 Three-Quarter View", "three-quarter view, 45 degree angle, dynamic composition, semi-profile"),
+    ],
+    
+    "Vertical Angles": [
+        ("🦅 Top View (Bird's Eye)", "top view, bird's eye perspective, overhead angle, aerial shot"),
+        ("⬇️ Low Angle (Worm's Eye)", "low angle, camera looking up, worm's eye view, dramatic upward perspective"),
+        ("⬆️ High Angle", "high angle, camera looking down, god's eye view, downward perspective"),
+        ("👁️ Eye Level", "eye level shot, neutral angle, human perspective, natural viewpoint"),
+        ("🏔️ Dutch Angle (Tilted)", "dutch angle, tilted camera, canted angle, off-kilter perspective"),
+    ],
+    
+    "Distance/Framing": [
+        ("🔍 Extreme Close-Up (ECU)", "extreme close-up, macro detail, intimate framing, focus on specific feature"),
+        ("😊 Close-Up (CU)", "close-up shot, head and shoulders, facial expressions, emotional detail"),
+        ("👤 Medium Close-Up (MCU)", "medium close-up, chest up, personal shot, conversational framing"),
+        ("🧍 Medium Shot (MS)", "medium shot, waist up, half body, standard framing"),
+        ("🚶 Medium Wide Shot", "medium wide shot, knees up, three-quarter body, contextual framing"),
+        ("🌄 Wide Shot (WS)", "wide shot, full body, establishing shot, showing environment"),
+        ("🌍 Extreme Wide Shot (EWS)", "extreme wide shot, landscape view, vast scene, environmental context"),
+    ],
+    
+    "Movement Shots": [
+        ("🎬 Tracking Shot", "tracking shot, following movement, dynamic camera, smooth motion"),
+        ("🔄 Pan Shot", "panning shot, horizontal movement, sweeping view, side-to-side motion"),
+        ("⬆️⬇️ Tilt Shot", "tilting shot, vertical movement, up-down motion, revealing shot"),
+        ("🎪 Dolly Shot", "dolly shot, camera moving forward/backward, approaching/receding, depth motion"),
+        ("🎢 Crane Shot", "crane shot, elevated movement, swooping motion, dramatic reveal"),
+        ("🚁 Aerial/Drone Shot", "aerial shot, drone perspective, flyover view, sky-level filming"),
+    ],
+    
+    "POV & Perspective": [
+        ("👔 Over-The-Shoulder (OTS)", "over the shoulder perspective, conversation angle, immersive POV"),
+        ("👁️ Point of View (POV)", "point of view shot, first-person perspective, subjective camera, character's vision"),
+        ("🪞 Reverse Angle", "reverse angle, opposite perspective, reaction shot, counter view"),
+        ("🎭 Two-Shot", "two-shot, both subjects in frame, relationship composition, dual focus"),
+        ("👥 Group Shot", "group shot, multiple subjects, ensemble framing, collective view"),
+    ],
+    
+    "Creative/Artistic": [
+        ("🎨 Symmetrical Composition", "symmetrical composition, balanced frame, centered subject, mirrored perspective"),
+        ("🌟 Leading Lines", "leading lines composition, directional framing, guiding perspective, depth creation"),
+        ("🖼️ Frame Within Frame", "frame within frame, layered composition, bordered subject, nested perspective"),
+        ("🔲 Rule of Thirds", "rule of thirds composition, off-center framing, balanced asymmetry, grid placement"),
+        ("🌀 Spiral/Circular", "spiral composition, circular framing, rotating perspective, vortex view"),
+        ("🪟 Through Glass/Reflection", "through glass shot, reflection angle, layered reality, transparent barrier"),
+        ("🌫️ Silhouette Shot", "silhouette shot, backlit subject, shadow composition, contrast perspective"),
+        ("💡 Lens Flare Shot", "lens flare composition, light burst, dramatic lighting, cinematic glow"),
+    ],
+    
+    "Specialty Shots": [
+        ("🎯 Rack Focus", "rack focus shot, changing focal plane, depth transition, selective clarity"),
+        ("🌊 Underwater Shot", "underwater perspective, aquatic view, submerged angle, liquid environment"),
+        ("🔬 Macro/Microscopic", "macro shot, microscopic view, extreme detail, tiny subject magnified"),
+        ("📱 Screen/Monitor POV", "screen perspective, monitor view, digital display angle, tech interface"),
+        ("🎪 Fisheye/Wide Lens", "fisheye perspective, ultra-wide angle, distorted view, 180-degree vision"),
+        ("🎭 Split Screen", "split screen composition, dual perspective, parallel view, divided frame"),
+        ("⏱️ Time-Lapse Angle", "time-lapse perspective, compressed time, motion blur, temporal view"),
+        ("🎬 Whip Pan", "whip pan shot, fast horizontal movement, blur transition, dynamic sweep"),
+    ]
+}
+
 # --- Helper Functions ---
 def safe_generate(prompt, model):
     """Safe API call with error handling"""
-    # Check if demo mode
     if model is None:
         return "🎮 **Demo Mode Active**\n\nThis is a preview of what the AI would generate. To use real AI features, please:\n1. Logout\n2. Get a free API key from ai.google.dev\n3. Login with your API key\n\n[Sample output would appear here]"
     
@@ -434,7 +488,6 @@ def safe_generate(prompt, model):
 
 def analyze_image(image_file, model):
     """Analyze uploaded image"""
-    # Check if demo mode
     if model is None:
         return "🎮 **Demo Mode** - Image analysis not available. Login with API key to use this feature."
     
@@ -495,54 +548,109 @@ def split_dialogue(text, max_words=15):
     
     return clips
 
-def generate_image_ai(prompt, api_key, number_of_images=1):
-    """Generate images using Imagen 4.0 model"""
+def generate_selected_angle_prompts(image_file, model, selected_angles, selected_style):
+    """Generate video prompts for selected camera angles only"""
     try:
-        # Create client with API key
-        client = genai_client.Client(api_key=api_key)
+        if model is None:
+            return None, "🎮 Demo Mode - Prompt generation requires a real API key."
         
-        # Add a small delay to avoid rate limiting
-        time.sleep(2)
+        # Load and analyze image
+        img = Image.open(image_file)
+        if max(img.size) > 1024:
+            img.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
         
-        # Generate images using Imagen 4.0
-        from google.genai import types
+        # Analyze image first
+        st.info("📝 Analyzing image...")
+        analysis_prompt = """Analyze this image and provide a detailed description for AI video generation prompts. Include:
+        - Subject/character details (appearance, clothing, style)
+        - Setting and environment
+        - Mood and atmosphere
+        - Colors and lighting
+        - Any notable features
         
-        response = client.models.generate_images(
-            model='imagen-4.0-generate-001',
-            prompt=prompt,
-            config=types.GenerateImagesConfig(
-                number_of_images=number_of_images,
-            )
-        )
+        Be specific and detailed."""
         
-        # Extract all generated images
-        if response.generated_images and len(response.generated_images) > 0:
-            images = [img.image for img in response.generated_images]
+        try:
+            analysis_response = model.generate_content([analysis_prompt, img])
+            base_description = analysis_response.text.strip()
             st.session_state.api_calls_count += 1
-            return images, None
+            st.success(f"✅ Image analyzed successfully!")
+        except Exception as ve:
+            return None, f"⚠️ Image analysis failed: {str(ve)}"
         
-        return None, "No images generated in response"
+        generated_prompts = []
+        
+        # Generate prompt for each selected angle
+        for idx, angle_name in enumerate(selected_angles):
+            # Find the angle description from database
+            angle_description = ""
+            for category, angles in CAMERA_ANGLES.items():
+                for name, desc in angles:
+                    if name == angle_name:
+                        angle_description = desc
+                        break
+                if angle_description:
+                    break
+            
+            st.info(f"🎬 Generating {angle_name} prompt ({idx+1}/{len(selected_angles)})...")
+            
+            # Create detailed video prompt
+            prompt_template = f"""Create a professional AI video generation prompt for the following setup:
+
+IMAGE ANALYSIS:
+{base_description}
+
+CAMERA ANGLE: {angle_name}
+ANGLE DESCRIPTION: {angle_description}
+VISUAL STYLE: {selected_style}
+
+Generate a detailed video prompt that includes:
+1. Character/subject description
+2. Camera angle and movement specifications
+3. Composition and framing details
+4. Lighting setup and mood
+5. Visual style and atmosphere
+6. Technical specifications (resolution, aspect ratio if relevant)
+7. Any motion or animation details
+8. Color grading and post-processing notes
+
+Format the prompt professionally for AI video tools like Runway ML, Pika Labs, or similar platforms.
+Make it production-ready, specific, and detailed. Use cinematic terminology."""
+            
+            try:
+                response = model.generate_content(prompt_template)
+                prompt_text = response.text.strip()
+                st.session_state.api_calls_count += 1
+                
+                generated_prompts.append({
+                    'angle': angle_name,
+                    'prompt': prompt_text
+                })
+                st.success(f"✅ {angle_name} prompt generated!")
+                
+            except Exception as prompt_error:
+                st.warning(f"⚠️ {angle_name} prompt generation failed: {str(prompt_error)}")
+            
+            # Small delay between generations
+            if idx < len(selected_angles) - 1:
+                time.sleep(1)
+        
+        if generated_prompts:
+            return generated_prompts, None
+        else:
+            return None, "No prompts were generated successfully."
         
     except Exception as e:
         error_msg = str(e)
-        
-        # Detailed error logging for debugging
-        print(f"Full error: {error_msg}")
-        
-        if "429" in error_msg or "ResourceExhausted" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
-            return None, "⏳ Rate limit. Wait 60 seconds and try again."
-        elif "quota" in error_msg.lower() or "QUOTA" in error_msg:
-            return None, "💳 API quota exceeded. Check your quota at ai.google.dev"
-        elif "invalid" in error_msg.lower() or "API_KEY_INVALID" in error_msg:
-            return None, "🔑 Invalid API key for image generation."
-        elif "not found" in error_msg.lower() or "NOT_FOUND" in error_msg:
-            return None, "⚠️ Model 'imagen-4.0-generate-001' not found. Make sure it's enabled for your API key."
-        elif "permission" in error_msg.lower() or "PERMISSION_DENIED" in error_msg:
-            return None, "🚫 No permission to use Imagen. Check API settings."
-        elif "FAILED_PRECONDITION" in error_msg:
-            return None, "⚠️ Imagen 4.0 not available in your region yet. Try again later."
+        if "429" in error_msg or "ResourceExhausted" in error_msg:
+            return None, "⏳ Rate limit reached. Please wait 60 seconds and try again."
+        elif "quota" in error_msg.lower():
+            return None, "💳 API quota exceeded."
+        elif "invalid" in error_msg.lower():
+            return None, "🔑 Invalid API key."
         else:
             return None, f"⚠️ Error: {error_msg}"
+
 
 # --- LOGIN PAGE ---
 if not st.session_state.logged_in:
@@ -551,14 +659,14 @@ if not st.session_state.logged_in:
         <div class="login-box">
             <div class="login-logo">
                 <div class="login-logo-icon">✨</div>
-                <h1 class="login-title">Ultra Studio</h1>
-                <p class="login-subtitle">Professional AI Content Creation</p>
+                <h1 class="login-title">Ultra Studio V13</h1>
+                <p class="login-subtitle">Multi-Angle AI Generator</p>
             </div>
         </div>
     </div>
     """, unsafe_allow_html=True)
     
-    # Login form in the center
+    # Login form
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
@@ -580,14 +688,12 @@ if not st.session_state.logged_in:
                 if api_key_input.strip():
                     with st.spinner("🔍 Validating API key..."):
                         try:
-                            # Test API key with a simple request
+                            # Test API key
                             genai.configure(api_key=api_key_input)
                             test_model = genai.GenerativeModel('gemini-3-flash-preview')
-                            
-                            # Make a minimal test request
                             response = test_model.generate_content("Hi")
                             
-                            # If we got here, the API key works
+                            # Success
                             st.session_state.logged_in = True
                             st.session_state.api_key = api_key_input
                             st.success("✅ Login successful! Redirecting...")
@@ -666,7 +772,6 @@ if not is_demo:
     model = genai.GenerativeModel('gemini-3-flash-preview')
 else:
     model = None
-    # Show demo banner
     st.warning("🎮 **Demo Mode** - You're exploring the interface. Enter a real API key to use AI features.", icon="ℹ️")
 
 # --- NAVBAR ---
@@ -675,7 +780,7 @@ col1, col2 = st.columns([3, 1])
 with col1:
     st.markdown("""
     <div class="navbar">
-        <div class="navbar-brand">✨ Ultra Studio V12 Pro</div>
+        <div class="navbar-brand">✨ Ultra Studio V13 Pro</div>
         <div class="navbar-stats">
             <div class="stat-item">
                 <div class="stat-value">{}</div>
@@ -699,9 +804,17 @@ with col2:
 # --- HERO SECTION ---
 st.markdown("""
 <div class="hero-section">
-    <h1 class="hero-title">Transform Ideas into Reality</h1>
-    <p class="hero-subtitle">Professional AI-powered content creation for videos, images, and viral content</p>
+    <h1 class="hero-title">Multi-Angle Video Prompt Generator</h1>
+    <p class="hero-subtitle">Upload 1 Image → Select Your Camera Angles → Get Professional Prompts</p>
     <div class="hero-features">
+        <div class="hero-feature">
+            <span class="hero-feature-icon">📸</span>
+            <div>40+ Camera Angles</div>
+        </div>
+        <div class="hero-feature">
+            <span class="hero-feature-icon">🎨</span>
+            <div>Custom Selection</div>
+        </div>
         <div class="hero-feature">
             <span class="hero-feature-icon">📝</span>
             <div>Script Doctor</div>
@@ -711,16 +824,8 @@ st.markdown("""
             <div>Video Prompts</div>
         </div>
         <div class="hero-feature">
-            <span class="hero-feature-icon">🎨</span>
-            <div>AI Image Creator</div>
-        </div>
-        <div class="hero-feature">
-            <span class="hero-feature-icon">🖼️</span>
-            <div>Image Prompts</div>
-        </div>
-        <div class="hero-feature">
             <span class="hero-feature-icon">🚀</span>
-            <div>Viral Content</div>
+            <div>Viral Manager</div>
         </div>
     </div>
 </div>
@@ -728,19 +833,220 @@ st.markdown("""
 
 # --- TABS ---
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "📸 Multi-Angle Generator",
     "📝 Script Doctor",
     "🎬 Video Generator",
-    "🎨 AI Image Creator",
     "🖼️ Image Prompts",
     "🚀 Viral Manager"
 ])
 
-# === TAB 1: SCRIPT DOCTOR ===
+# === TAB 1: MULTI-ANGLE GENERATOR ===
 with tab1:
+    st.markdown("### 📸 Custom Camera Angle Prompt Generator")
+    
+    if is_demo:
+        st.info("🎮 **Demo Mode** - Multi-angle prompt generation requires a real API key. Please login to use this feature.")
+    
+    st.markdown("""
+    <div style='background: linear-gradient(135deg, #e0e7ff 0%, #dbeafe 100%); padding: 1.5rem; border-radius: 16px; margin-bottom: 2rem;'>
+        <h3 style='color: #4338ca; margin-bottom: 0.5rem;'>💡 How It Works</h3>
+        <p style='color: #4338ca; margin: 0;'>
+            1. Upload your image<br>
+            2. Select the camera angles you want (multiple selection supported)<br>
+            3. Choose your visual style<br>
+            4. Get professional video prompts for only your selected angles!
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Main layout
+    col_left, col_right = st.columns([1, 1], gap="large")
+    
+    with col_left:
+        st.markdown("#### 📤 Upload Image")
+        
+        uploaded_image = st.file_uploader(
+            "Choose an image",
+            type=["jpg", "jpeg", "png", "webp"],
+            help="Upload any image to generate video prompts from selected camera angles",
+            key="multi_angle_upload"
+        )
+        
+        if uploaded_image:
+            st.image(uploaded_image, use_container_width=True, caption="Original Image")
+        
+        st.markdown("---")
+        st.markdown("#### 🎨 Select Visual Style")
+        
+        selected_style = st.selectbox(
+            "Choose visual style for prompts",
+            [
+                "Photorealistic/Cinematic",
+                "Digital Art/Illustration", 
+                "Oil Painting/Artistic",
+                "Watercolor/Soft",
+                "Anime/Manga Style",
+                "3D Render/CGI",
+                "Pencil Sketch/Drawing",
+                "Cyberpunk/Futuristic",
+                "Fantasy Art/Mystical",
+                "Retro/Vintage Film",
+                "Documentary/Raw",
+                "Music Video/Dynamic",
+                "Film Noir/Black & White",
+                "Neon/Vibrant Colors",
+                "Pastel/Soft Colors"
+            ],
+            key="multi_angle_style"
+        )
+    
+    with col_right:
+        st.markdown("#### 🎯 Select Camera Angles (Multiple Selection)")
+        
+        st.info("💡 Select one or more angles. Only selected angles will generate prompts!")
+        
+        # Create tabs for angle categories
+        angle_tabs = st.tabs(list(CAMERA_ANGLES.keys()))
+        
+        all_selected_angles = []
+        
+        for tab, (category, angles) in zip(angle_tabs, CAMERA_ANGLES.items()):
+            with tab:
+                st.markdown(f"**{category}** ({len(angles)} options)")
+                
+                # Create checkboxes for each angle in this category
+                for angle_name, angle_desc in angles:
+                    col_check, col_info = st.columns([3, 1])
+                    with col_check:
+                        is_selected = st.checkbox(
+                            angle_name,
+                            key=f"angle_{angle_name}",
+                            help=angle_desc
+                        )
+                        if is_selected:
+                            all_selected_angles.append(angle_name)
+                    with col_info:
+                        with st.expander("ℹ️"):
+                            st.caption(angle_desc)
+        
+        st.markdown("---")
+        
+        # Show selected angles count
+        if all_selected_angles:
+            st.success(f"✅ **{len(all_selected_angles)} angles selected**")
+            
+            with st.expander("📋 View Selected Angles", expanded=False):
+                for idx, angle in enumerate(all_selected_angles, 1):
+                    st.write(f"{idx}. {angle}")
+        else:
+            st.warning("⚠️ Please select at least one camera angle")
+        
+        # Generate button
+        generate_btn = st.button(
+            f"🎬 Generate Prompts for {len(all_selected_angles)} Selected Angle{'s' if len(all_selected_angles) != 1 else ''}",
+            type="primary",
+            use_container_width=True,
+            disabled=is_demo or not uploaded_image or len(all_selected_angles) == 0,
+            key="gen_prompts_btn"
+        )
+        
+        if generate_btn and uploaded_image and all_selected_angles:
+            with st.spinner(f"🎨 Generating {len(all_selected_angles)} camera angle prompts... This will take about {len(all_selected_angles) * 2} seconds..."):
+                generated_prompts, error = generate_selected_angle_prompts(
+                    uploaded_image,
+                    model,
+                    all_selected_angles,
+                    selected_style
+                )
+                
+                if generated_prompts:
+                    st.success(f"✅ Generated {len(generated_prompts)} camera angle prompts!")
+                    
+                    st.markdown("---")
+                    st.markdown("### 🎬 Generated Video Prompts:")
+                    
+                    # Compile all prompts
+                    all_prompts_text = f"""MULTI-ANGLE VIDEO PROMPTS
+Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}
+Style: {selected_style}
+Total Angles: {len(generated_prompts)}
+
+{'='*80}
+
+"""
+                    
+                    # Display each prompt
+                    for idx, prompt_data in enumerate(generated_prompts):
+                        with st.expander(f"🎬 {prompt_data['angle']} - Prompt #{idx+1}", expanded=(idx==0)):
+                            st.markdown(f"**Camera Angle:** {prompt_data['angle']}")
+                            st.markdown(f"**Visual Style:** {selected_style}")
+                            st.markdown("---")
+                            st.markdown("**Video Prompt:**")
+                            st.code(prompt_data['prompt'], language="text")
+                            
+                            # Individual download
+                            st.download_button(
+                                f"📥 Download {prompt_data['angle']} Prompt",
+                                data=prompt_data['prompt'],
+                                file_name=f"{prompt_data['angle'].replace(' ', '_')}_prompt_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
+                                mime="text/plain",
+                                use_container_width=True,
+                                key=f"dl_prompt_{idx}"
+                            )
+                        
+                        # Add to combined text
+                        all_prompts_text += f"""{prompt_data['angle']}
+{'-'*80}
+{prompt_data['prompt']}
+
+{'='*80}
+
+"""
+                    
+                    # Bulk download
+                    st.markdown("---")
+                    col_dl1, col_dl2 = st.columns(2)
+                    with col_dl1:
+                        st.download_button(
+                            f"📦 Download ALL {len(generated_prompts)} Prompts (Combined)",
+                            data=all_prompts_text,
+                            file_name=f"all_{len(generated_prompts)}_angle_prompts_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
+                            mime="text/plain",
+                            use_container_width=True,
+                            type="primary",
+                            key="dl_all_prompts"
+                        )
+                    with col_dl2:
+                        # JSON format download
+                        json_data = json.dumps({
+                            'metadata': {
+                                'generated': datetime.now().strftime('%Y-%m-%d %H:%M'),
+                                'style': selected_style,
+                                'total_angles': len(generated_prompts)
+                            },
+                            'prompts': generated_prompts
+                        }, indent=2)
+                        
+                        st.download_button(
+                            "📋 Download as JSON",
+                            data=json_data,
+                            file_name=f"prompts_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
+                            mime="application/json",
+                            use_container_width=True,
+                            key="dl_json"
+                        )
+                    
+                    st.success("💡 Copy these prompts to Runway ML, Pika Labs, or your preferred AI video tool!")
+                    
+                else:
+                    st.error(f"❌ {error}")
+
+# === TAB 2: SCRIPT DOCTOR ===
+with tab2:
     col1, col2 = st.columns(2, gap="large")
     
     with col1:
-        st.markdown("### 📥 Your Script")
+        st.markdown("### 📥 Input Script")
         raw_script = st.text_area(
             "Enter your content",
             height=300,
@@ -808,8 +1114,8 @@ Output enhanced script only."""
             else:
                 st.warning("⚠️ Please enter content first")
 
-# === TAB 2: VIDEO GENERATOR ===
-with tab2:
+# === TAB 3: VIDEO GENERATOR ===
+with tab3:
     col1, col2 = st.columns(2, gap="large")
     
     with col1:
@@ -879,7 +1185,7 @@ with tab2:
                     
                     style_name = visual_style.split(" ", 1)[1] if " " in visual_style else visual_style
                     
-                    prompt = f"""Create professional video prompt for AI tools.
+                    prompt_text = f"""Create professional video prompt for AI tools.
 
 CLIP #{i+1}
 CHARACTER: {img_desc}
@@ -896,7 +1202,7 @@ Include:
 
 Production-ready format."""
                     
-                    result = safe_generate(prompt, model)
+                    result = safe_generate(prompt_text, model)
                     
                     with st.expander(f"🎬 Clip {i+1}", expanded=(i==0)):
                         if "Error" not in result:
@@ -916,270 +1222,6 @@ Production-ready format."""
                 st.success("✅ All prompts generated!")
             else:
                 st.error("⚠️ Please provide character description and script")
-
-# === TAB 3: AI IMAGE CREATOR ===
-with tab3:
-    st.markdown("### 🎨 AI Image Creator")
-    
-    if is_demo:
-        st.info("🎮 **Demo Mode** - Image generation requires a real API key. Please login to use this feature.")
-    
-    col1, col2 = st.columns([1, 1], gap="large")
-    
-    with col1:
-        st.markdown("#### 💭 Describe Your Image")
-        
-        image_prompt = st.text_area(
-            "What do you want to create?",
-            height=200,
-            placeholder="Example: A cute cat wearing sunglasses sitting on a beach during sunset, photorealistic style, 4K quality",
-            help="Be detailed and specific for best results",
-            key="ai_image_prompt"
-        )
-        
-        col_style, col_quality = st.columns(2)
-        
-        with col_style:
-            art_style = st.selectbox(
-                "Art Style",
-                [
-                    "Photorealistic",
-                    "Digital Art",
-                    "Oil Painting",
-                    "Anime/Manga",
-                    "3D Render",
-                    "Watercolor",
-                    "Pencil Sketch",
-                    "Cyberpunk",
-                    "Fantasy Art"
-                ],
-                key="art_style_select"
-            )
-        
-        with col_quality:
-            quality = st.selectbox(
-                "Quality",
-                ["Standard", "High Quality", "Ultra HD 4K"],
-                index=1,
-                key="quality_select"
-            )
-        
-        # Aspect ratio
-        aspect_ratio = st.selectbox(
-            "Aspect Ratio",
-            ["1:1 Square", "16:9 Landscape", "9:16 Portrait", "4:3 Classic", "3:2 Photo"],
-            key="aspect_select"
-        )
-        
-        # Number of images
-        num_images = st.selectbox(
-            "Number of Images",
-            [1, 2, 3, 4],
-            index=0,
-            help="Generate multiple variations at once",
-            key="num_images_select"
-        )
-        
-        # Additional options
-        with st.expander("⚙️ Advanced Options", expanded=False):
-            mood = st.selectbox(
-                "Mood/Atmosphere",
-                ["Natural", "Dramatic", "Cheerful", "Dark/Moody", "Dreamy", "Vibrant"],
-                key="mood_select"
-            )
-            
-            lighting = st.selectbox(
-                "Lighting",
-                ["Natural", "Golden Hour", "Studio", "Neon", "Dramatic", "Soft"],
-                key="lighting_select"
-            )
-            
-            add_details = st.text_input(
-                "Additional Details (optional)",
-                placeholder="e.g., bokeh effect, lens flare, HDR...",
-                key="add_details_input"
-            )
-        
-        generate_img_btn = st.button(
-            "🎨 Generate Image",
-            type="primary",
-            use_container_width=True,
-            disabled=is_demo,
-            key="generate_image_btn"
-        )
-        
-        # Show cooldown timer if needed
-        current_time = time.time()
-        time_since_last = current_time - st.session_state.last_image_gen_time
-        cooldown_time = 3  # 3 seconds cooldown
-        
-        if time_since_last < cooldown_time:
-            remaining = int(cooldown_time - time_since_last)
-            st.info(f"⏰ Please wait {remaining} seconds before generating again...")
-    
-    with col2:
-        st.markdown("#### 🖼️ Generated Image")
-        
-        if generate_img_btn:
-            # Check cooldown
-            current_time = time.time()
-            time_since_last = current_time - st.session_state.last_image_gen_time
-            
-            if time_since_last < 3:
-                st.warning(f"⏰ Please wait {int(3 - time_since_last)} more seconds...")
-            elif image_prompt.strip():
-                # Build enhanced prompt
-                enhanced_prompt = f"{image_prompt}"
-                
-                if art_style != "Photorealistic":
-                    enhanced_prompt += f", {art_style} style"
-                
-                enhanced_prompt += f", {aspect_ratio.split()[0]} aspect ratio"
-                
-                if quality == "High Quality":
-                    enhanced_prompt += ", high quality, detailed"
-                elif quality == "Ultra HD 4K":
-                    enhanced_prompt += ", ultra HD 4K, extremely detailed, professional"
-                
-                if mood != "Natural":
-                    enhanced_prompt += f", {mood.lower()} atmosphere"
-                
-                if lighting != "Natural":
-                    enhanced_prompt += f", {lighting.lower()} lighting"
-                
-                if add_details:
-                    enhanced_prompt += f", {add_details}"
-                
-                # Show what we're generating
-                with st.expander("📋 Full Prompt Being Used", expanded=False):
-                    st.code(enhanced_prompt, language="text")
-                
-                # Generate image
-                st.session_state.last_image_gen_time = time.time()
-                
-                with st.spinner(f"🎨 Creating {num_images} image(s)... This may take 10-30 seconds..."):
-                    generated_images, error = generate_image_ai(enhanced_prompt, st.session_state.api_key, num_images)
-                    
-                    if generated_images:
-                        st.success(f"✅ {len(generated_images)} image(s) generated successfully!")
-                        
-                        # Display all images
-                        if len(generated_images) == 1:
-                            st.image(generated_images[0], use_container_width=True, caption="Generated Image")
-                            
-                            # Save to bytes for download
-                            img_bytes = io.BytesIO()
-                            generated_images[0].save(img_bytes, format='PNG')
-                            img_bytes.seek(0)
-                            
-                            # Download button
-                            st.download_button(
-                                "📥 Download Image",
-                                data=img_bytes,
-                                file_name=f"ai_generated_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
-                                mime="image/png",
-                                use_container_width=True
-                            )
-                        else:
-                            # Display multiple images in grid
-                            cols = st.columns(2)
-                            for idx, img in enumerate(generated_images):
-                                with cols[idx % 2]:
-                                    st.image(img, use_container_width=True, caption=f"Variation {idx + 1}")
-                                    
-                                    # Individual download button
-                                    img_bytes = io.BytesIO()
-                                    img.save(img_bytes, format='PNG')
-                                    img_bytes.seek(0)
-                                    
-                                    st.download_button(
-                                        f"📥 Download #{idx + 1}",
-                                        data=img_bytes,
-                                        file_name=f"ai_generated_{idx+1}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
-                                        mime="image/png",
-                                        use_container_width=True,
-                                        key=f"download_{idx}"
-                                    )
-                        
-                        # Option to regenerate
-                        st.markdown("---")
-                        if st.button("🔄 Generate More", use_container_width=True):
-                            st.rerun()
-                        
-                    else:
-                        st.error(f"❌ {error}")
-                        
-                        # Detailed troubleshooting based on error
-                        if "Rate limit" in error or "quota" in error.lower():
-                            st.warning("""
-                            **Rate Limit Solutions:**
-                            
-                            ⏰ **Wait 60 seconds** and try again
-                            
-                            📊 Check your usage at [Google AI Studio](https://aistudio.google.com/apikey)
-                            
-                            💡 Free tier has limits - upgrade if needed
-                            """)
-                        
-                        elif "not found" in error.lower() or "not available" in error.lower():
-                            st.info("""
-                            **Model Access Issue:**
-                            
-                            The `imagen-4.0-generate-001` model may not be available yet.
-                            
-                            ✅ Check model availability at [ai.google.dev](https://ai.google.dev)
-                            
-                            ✅ Make sure your API key has Imagen access enabled
-                            
-                            ✅ Model might be in limited preview - try again later
-                            """)
-                        
-                        elif "permission" in error.lower():
-                            st.info("""
-                            **Permission Issue:**
-                            
-                            Your API key might not have permission for image generation.
-                            
-                            ✅ Visit [Google AI Studio](https://aistudio.google.com)
-                            
-                            ✅ Check if image generation is enabled for your project
-                            
-                            ✅ You may need to enable additional APIs
-                            """)
-                        
-                        # Show raw error in expander
-                        with st.expander("🔧 Technical Details"):
-                            st.code(error, language="text")
-            else:
-                st.warning("⚠️ Please describe what you want to create")
-        else:
-            # Placeholder
-            st.markdown("""
-            <div style='background: #f8f9fa; padding: 3rem 2rem; border-radius: 14px; text-align: center;'>
-                <div style='font-size: 4em; margin-bottom: 1rem;'>🎨</div>
-                <p style='color: #64748b; margin: 0; font-size: 1.1em;'>
-                    Describe your image and click<br>
-                    <strong>Generate Image</strong>
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Example prompts
-            st.markdown("---")
-            st.markdown("**💡 Example Prompts:**")
-            
-            examples = [
-                "🏔️ Mountain landscape at sunrise with clouds",
-                "🤖 Futuristic robot in cyberpunk city",
-                "🐱 Cute kitten playing with yarn ball",
-                "🌸 Beautiful garden with cherry blossoms",
-                "🚀 Spaceship traveling through galaxy"
-            ]
-            
-            for example in examples:
-                if st.button(example, key=f"ex_{example}", use_container_width=True):
-                    st.session_state.ai_image_prompt = example.split(" ", 1)[1]
-                    st.rerun()
 
 # === TAB 4: IMAGE PROMPTS ===
 with tab4:
@@ -1209,9 +1251,26 @@ with tab4:
             )
         
         img_style = st.selectbox(
-            "Visual Style",
-            ["🎯 Photorealistic", "🎨 Digital Art", "🖼️ Oil Painting", "✨ Anime/Manga"]
+            "Art Style (56+ Options)",
+            [
+                "Photorealistic", "Digital Art", "Oil Painting", "Watercolor",
+                "Anime/Manga", "3D Render", "Pencil Sketch", "Charcoal Drawing",
+                "Ink Drawing", "Pastel Art", "Acrylic Painting", "Abstract Art",
+                "Pop Art", "Comic Book", "Cartoon", "Pixel Art",
+                "Low Poly", "Voxel Art", "Cyberpunk", "Steampunk",
+                "Fantasy Art", "Sci-Fi", "Horror", "Gothic",
+                "Art Nouveau", "Art Deco", "Minimalist", "Impressionist",
+                "Expressionist", "Surrealism", "Cubism", "Pointillism",
+                "Graffiti", "Street Art", "Vintage Photo", "Retro 80s",
+                "Film Noir", "Baroque", "Renaissance", "Medieval",
+                "Egyptian", "Japanese Ukiyo-e", "Chinese Ink", "Stained Glass",
+                "Mosaic", "Paper Cut", "Origami", "Clay Animation",
+                "Stop Motion", "Glitch Art", "Vaporwave", "Synthwave",
+                "Neon Art", "Holographic", "Psychedelic", "Geometric", "Isometric"
+            ],
+            key="img_style_select"
         )
+
         
         create_btn = st.button("✨ Create Prompt", type="primary", use_container_width=True)
     
@@ -1333,13 +1392,13 @@ st.markdown("""
 <div style='text-align: center; padding: 2rem; background: white; border-radius: 20px; 
             margin: 0 3rem; box-shadow: 0 4px 20px rgba(0,0,0,0.08);'>
     <h3 style='color: #667eea; margin-bottom: 0.5rem; font-family: "Manrope", sans-serif;'>
-        Ultra Studio V12 Pro
+        Ultra Studio V13 Pro
     </h3>
     <p style='color: #64748b; margin: 0;'>
-        Professional AI Content Creation Platform
+        40+ Camera Angles • Custom Selection • Professional Content Creation
     </p>
     <p style='color: #94a3b8; font-size: 0.9em; margin-top: 0.5rem;'>
-        Powered by Google Gemini AI ✨
+        Powered by Google Gemini 3 Flash Preview ✨
     </p>
 </div>
 """, unsafe_allow_html=True)
